@@ -1,0 +1,217 @@
+name: Build
+
+# Reusable build for ci.yml (test only) and release.yml (test and push).
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to build (empty for the triggering commit)"
+        required: false
+        type: string
+        default: ""
+      version:
+        description: "Release version (e.g., v1.2.3). Required when push is true."
+        required: false
+        type: string
+        default: ""
+      push:
+        description: "Push images to ghcr.io"
+        required: false
+        type: boolean
+        default: false
+
+# No permissions block: a called workflow runs with what its caller grants.
+# release.yml grants packages: write for the push.
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/php-php-eol-cve-2026-109618-109619
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.dirs.outputs.dirs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: List variant directories
+        id: dirs
+        run: |
+          echo "dirs=$(find . -mindepth 4 -maxdepth 4 -name Dockerfile -not -path './.git/*' | sed 's#^\./##; s#/Dockerfile$##' | sort | jq -Rnc '[inputs]')" >> "$GITHUB_OUTPUT"
+
+  # ===========================================================================
+  # Build each variant on a native runner per architecture.
+  # QEMU emulation is too slow for a full PHP build.
+  # ===========================================================================
+  build:
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.matrix.outputs.dirs) }}
+        platform:
+          - { name: linux/amd64, runner: ubuntu-24.04 }
+          - { name: linux/arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Compute cache scope
+        id: meta
+        env:
+          SLUG: ${{ matrix.dir }}-${{ matrix.platform.name }}
+        run: |
+          echo "slug=${SLUG//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to ghcr.io
+        if: inputs.push
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.dir }}
+          build-contexts: patches=./patches
+          platforms: ${{ matrix.platform.name }}
+          load: true
+          tags: local/test:latest
+          cache-from: type=gha,scope=${{ steps.meta.outputs.slug }}
+          cache-to: type=gha,scope=${{ steps.meta.outputs.slug }},mode=max
+
+      - name: Test
+        run: |
+          set -eux
+          docker run --rm local/test:latest php -v
+          docker run --rm local/test:latest php -m
+          # The fix must be in the installed headers and in the bundled source tarball.
+          docker run --rm local/test:latest grep -q zend_new_array_singleton /usr/local/include/php/Zend/zend_API.h
+          docker run --rm local/test:latest sh -euxc '
+            docker-php-source extract
+            grep -q zend_new_array_singleton /usr/src/php/Zend/zend_API.h
+            docker-php-ext-install -j"$(nproc)" bcmath
+            php -m | grep -qx bcmath
+          '
+
+      # The image is already built, so this only exports the cached layers.
+      - name: Push by digest
+        id: push
+        if: inputs.push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.dir }}
+          build-contexts: patches=./patches
+          platforms: ${{ matrix.platform.name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.description=PHP ${{ matrix.dir }} with the CVE-2026-109618 / CVE-2026-109619 fix backported
+            org.opencontainers.image.licenses=MIT AND PHP-3.01
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ steps.meta.outputs.slug }}
+
+      - name: Export digest
+        if: inputs.push
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          SLUG: ${{ steps.meta.outputs.slug }}
+        run: |
+          mkdir -p /tmp/digests
+          echo "$DIGEST" > "/tmp/digests/$SLUG"
+
+      - name: Upload digest
+        if: inputs.push
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ steps.meta.outputs.slug }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  # ===========================================================================
+  # Combine the per-architecture digests into one tagged multi-arch image.
+  # ===========================================================================
+  merge:
+    needs: [matrix, build]
+    if: inputs.push
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.matrix.outputs.dirs) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate version format
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Invalid version format '$VERSION'"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Compute artifact prefix
+        id: meta
+        env:
+          SLUG: ${{ matrix.dir }}
+        run: |
+          echo "slug=${SLUG//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: Download digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-${{ steps.meta.outputs.slug }}-linux-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Besides the moving tags, each release gets an immutable tag
+      # such as 7.4.33-cli-bullseye-v1.0.0.
+      - name: Create manifest list
+        env:
+          DIR: ${{ matrix.dir }}
+          VERSION: ${{ inputs.version }}
+          SLUG: ${{ steps.meta.outputs.slug }}
+        run: |
+          set -eux
+          primary="$(.github/tags.sh "$DIR" | head -1)"
+          tags=(-t "$IMAGE:$primary-$VERSION")
+          while read -r t; do tags+=(-t "$IMAGE:$t"); done < <(.github/tags.sh "$DIR")
+          sources=()
+          for f in /tmp/digests/*; do sources+=("$IMAGE@$(cat "$f")"); done
+          [ "${#sources[@]}" -eq 2 ]
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          digest="$(docker buildx imagetools inspect "$IMAGE:$primary-$VERSION" --format '{{json .Manifest}}' | jq -r .digest)"
+          mkdir -p /tmp/release
+          echo "| \`$DIR\` | \`$primary-$VERSION\` | \`$digest\` |" > "/tmp/release/$SLUG.md"
+
+      - name: Upload release note row
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ steps.meta.outputs.slug }}
+          path: /tmp/release/*
+          retention-days: 1

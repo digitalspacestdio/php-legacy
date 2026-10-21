@@ -1,0 +1,29 @@
+name: Tag and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., v1.2.3)"
+        required: true
+        type: string
+
+# actions: read is for tag.yml, which checks CI on the commit before tagging.
+# packages: write is for release.yml, which pushes the images.
+permissions:
+  contents: write
+  actions: read
+  packages: write
+
+jobs:
+  tag:
+    uses: ./.github/workflows/tag.yml
+    with:
+      version: ${{ inputs.version }}
+
+  release:
+    needs: [tag]
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ inputs.version }}
+    secrets: inherit
