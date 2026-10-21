@@ -69,8 +69,12 @@ Use the image tag to tell patched images apart.
 
 > [!NOTE]
 > 8.1 on Alpine also needs the upstream fix for [GH-14834](https://github.com/php/php-src/issues/14834).
+> Without it, `--with-pear` fails to install with the libxml2 in Alpine 3.22.
+> Upstream docker-library applies php/php-src@67259e451d for this.
 > That commit does not apply to 8.1.34 as is.
+> 8.1.34 wraps the changed line in `ZEND_DIAGNOSTIC_IGNORED_START` / `END`.
 > `patches/8.1-gh14834-rebased.patch` is the same change, rebased onto 8.1.34.
+> The `NEWS` hunk is dropped, as upstream does.
 
 ## Building locally
 
