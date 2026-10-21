@@ -1,4 +1,4 @@
-# php-php-eol-CVE-2026-109618-109619
+# php-eol-CVE-2026-109618-109619
 
 Docker images of end-of-life PHP 7.4, 8.0 and 8.1 with the fix for CVE-2026-109618 and CVE-2026-109619.
 
@@ -14,7 +14,7 @@ These images fill the gap for older versions.
 ## Images
 
 ```
-ghcr.io/mpyw/php-php-eol-cve-2026-109618-109619:<tag>
+ghcr.io/mpyw/php-eol-cve-2026-109618-109619:<tag>
 ```
 
 Platforms: `linux/amd64`, `linux/arm64`.
@@ -38,7 +38,7 @@ Tags follow the official image naming.
 The default Debian is bullseye for 7.4 and 8.0, and trixie for 8.1.
 
 Each release also gets an immutable tag, such as `7.4.33-cli-bullseye-v1.0.0`.
-The [releases](https://github.com/mpyw/php-php-eol-CVE-2026-109618-109619/releases) list these tags with their digests.
+The [releases](https://github.com/mpyw/php-eol-CVE-2026-109618-109619/releases) list these tags with their digests.
 
 > [!NOTE]
 > 7.4 and 8.0 stay on bullseye and alpine3.16.
