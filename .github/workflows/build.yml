@@ -97,13 +97,24 @@ jobs:
           docker run --rm local/test:latest php -v
           docker run --rm local/test:latest php -m
           # The fix must be in the installed headers and in the bundled source tarball.
-          docker run --rm local/test:latest grep -q zend_new_array_singleton /usr/local/include/php/Zend/zend_API.h
+          docker run --rm local/test:latest grep -q zend_mm_safe_error_ex /usr/local/include/php/Zend/zend_alloc.h
           docker run --rm local/test:latest sh -euxc '
             docker-php-source extract
-            grep -q zend_new_array_singleton /usr/src/php/Zend/zend_API.h
+            grep -q zend_mm_safe_error_ex /usr/src/php/Zend/zend_alloc.h
             docker-php-ext-install -j"$(nproc)" bcmath
             php -m | grep -qx bcmath
           '
+          # With the fix, running out of memory exits the process at once.
+          # Unpatched PHP runs shutdown functions after the error and exits with 255.
+          set +e
+          out="$(docker run --rm local/test:latest php -d memory_limit=4M -r \
+            'register_shutdown_function(function () { echo "SHUTDOWN\n"; }); str_repeat("a", 64 * 1024 * 1024);' 2>&1)"
+          code=$?
+          set -e
+          echo "$out"
+          [ "$code" -eq 1 ]
+          if grep -q SHUTDOWN <<< "$out"; then exit 1; fi
+          grep -q 'Allowed memory size' <<< "$out"
 
       # The image is already built, so this only exports the cached layers.
       - name: Push by digest
