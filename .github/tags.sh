@@ -8,7 +8,7 @@ IFS=/ read -r ver os variant <<< "$dir"
 full="$(sed -n 's/^ENV PHP_VERSION //p' "$dir/Dockerfile")"
 
 case "$ver" in
-	7.0) default_debian=stretch ;;
+	5.6|7.0) default_debian=stretch ;;
 	7.1|7.2) default_debian=buster ;;
 	7.3|7.4|8.0) default_debian=bullseye ;;
 	8.1) default_debian=trixie ;;

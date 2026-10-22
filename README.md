@@ -1,6 +1,6 @@
 # php-legacy
 
-Docker images of end-of-life PHP 7.0 to 8.1 with the fix for CVE-2026-109618 and CVE-2026-109619.
+Docker images of end-of-life PHP 5.6 to 8.1 with the fix for CVE-2026-109618 and CVE-2026-109619.
 
 The official [`php`](https://hub.docker.com/_/php) images on Docker Hub only cover 8.2 and later.
 These images fill the gap for older versions.
@@ -15,12 +15,12 @@ Based on [mpyw/php-eol-CVE-2026-109618-109619](https://github.com/mpyw/php-eol-C
 > Plan your upgrade to a supported PHP version.
 
 > [!CAUTION]
-> **The fix for 7.0 to 7.3 is an unofficial backport.**
+> **The fix for 5.6 to 7.3 is an unofficial backport.**
 > php-src publishes the fix only for 7.4, 8.0 and 8.1.
-> This repository ports the 7.4 fix to 7.0, 7.1, 7.2 and 7.3 by hand.
+> This repository ports the 7.4 fix to 5.6, 7.0, 7.1, 7.2 and 7.3 by hand.
 > Nobody from the PHP project has reviewed these ports.
 > No public proof of concept exists, so the ports are only tested indirectly.
-> See [Unofficial backports](#unofficial-backports-70-to-73).
+> See [Unofficial backports](#unofficial-backports-70-to-73) and [PHP 5.6](#php-56).
 
 ## Images
 
@@ -36,6 +36,7 @@ Platforms: `linux/amd64`, `linux/arm64`.
 
 | PHP | Debian | Alpine | Variants |
 | --- | --- | --- | --- |
+| 5.6.40 | stretch | alpine3.8 | cli, fpm, apache (Debian only) |
 | 7.0.33 | stretch | alpine3.7 | cli, fpm, apache (Debian only) |
 | 7.1.33 | buster | alpine3.10 | cli, fpm, apache (Debian only) |
 | 7.2.34 | buster | alpine3.12 | cli, fpm, apache (Debian only) |
@@ -58,7 +59,7 @@ The default Debian for each version:
 
 | PHP | Default Debian |
 | --- | --- |
-| 7.0 | stretch |
+| 5.6, 7.0 | stretch |
 | 7.1, 7.2 | buster |
 | 7.3, 7.4, 8.0 | bullseye |
 | 8.1 | trixie |
@@ -67,7 +68,7 @@ Each release also gets an immutable tag, such as `7.4.33-cli-bullseye-v1.0.0`.
 The [releases](https://github.com/digitalspacestdio/php-legacy/releases) list these tags with their digests.
 
 > [!NOTE]
-> 7.0 to 8.0 stay on the OS versions that docker-library used last.
+> 5.6 to 8.0 stay on the OS versions that docker-library used last.
 > These PHP versions do not support OpenSSL 3, and newer OS releases ship only OpenSSL 3.
 > All of these base images are past their own end of life.
 > The Debian ones install packages from archive.debian.org.
@@ -91,6 +92,7 @@ For 7.4 to 8.1, the patches come from these php-src branches:
 | `8.1-CVE-2026-109618-109619.patch` | `PHP-8.1-CVE-2026-109618-109619` | `1d7dec178a` |
 
 For 7.0 to 7.3, the patches are unofficial backports. See [Unofficial backports](#unofficial-backports-70-to-73).
+For 5.6, the patch is a further port of the 7.0 backport. See [PHP 5.6](#php-56).
 
 The `PHP_VERSION` string is not changed.
 `php -v` shows the original version.
@@ -145,6 +147,24 @@ Each port was checked against a build of the unpatched tarball, using these php-
 > [!WARNING]
 > These checks show that the mitigation is in place and that nothing else broke.
 > They cannot prove that the vulnerabilities are closed.
+
+### PHP 5.6
+
+docker-library removed 5.6 in February 2019.
+The 5.6 Dockerfiles come from the last upstream commit that had them (`ea377551`, 5.6.40).
+The `zts` variant is not built.
+
+`patches/5.6-CVE-2026-109618-109619.patch` ports the 7.0 backport to the Zend Engine 2 code base. The main differences:
+
+- Memory limit, out of memory, allocation size overflow and `String size overflow` errors call a new `zend_mm_safe_error_ex()`. It prints the fatal error to stderr and calls `_exit(1)`. 5.6 used to raise a catchable `E_ERROR` for these.
+- 5.6 has no `zend_string`, so the concat overflow checks stay in `concat_function()`, `add_string_to_string()` and `add_char_to_string()`. The VM handlers call these, so `zend_vm_execute.h` is not regenerated.
+- `zend_hash.c` does not change. 5.6 caps the table size in `_zend_hash_init()` and `zend_hash_do_resize()` without raising an error.
+- `array_init_singleton()` uses a table of 2 slots, not 1. 5.6 allocates the bucket table lazily and treats `nTableMask == 0` as "not allocated yet", so a 1-slot table would be re-allocated on every insert.
+- The executor state reset at the end of `shutdown_executor()` uses the 5.6 field types (`zval *` handlers, `zend_stack` and `zend_ptr_stack`).
+
+The 5.6 port was checked the same way as 7.0 to 7.3, with the php-src test suites listed above run against the installed `php` binary of the patched and of an unpatched image.
+The unpatched image passes all 4206 tests. The patched image fails the same 9 tests as the other backports and no others.
+Out of memory exits with code 1 and skips shutdown functions, `max_multipart_body_parts` limits the parts and warns, duplicate `Content-Disposition` headers are ignored, upload progress writes nothing to the session, and nested GPC arrays parse as before.
 
 ## Building locally
 
