@@ -69,7 +69,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-          IMAGE: ghcr.io/${{ github.repository_owner }}/php-eol-cve-2026-109618-109619
+          IMAGE: ghcr.io/${{ github.repository_owner }}/php-legacy
         run: |
           set -eu
           {

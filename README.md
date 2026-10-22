@@ -1,9 +1,12 @@
-# php-eol-CVE-2026-109618-109619
+# php-legacy
 
 Docker images of end-of-life PHP 7.0 to 8.1 with the fix for CVE-2026-109618 and CVE-2026-109619.
 
 The official [`php`](https://hub.docker.com/_/php) images on Docker Hub only cover 8.2 and later.
 These images fill the gap for older versions.
+
+Maintained by [digitalspacestdio](https://github.com/digitalspacestdio).
+Based on [mpyw/php-eol-CVE-2026-109618-109619](https://github.com/mpyw/php-eol-CVE-2026-109618-109619), which did the original backports.
 
 > [!WARNING]
 > These versions are still end-of-life.
@@ -22,7 +25,11 @@ These images fill the gap for older versions.
 ## Images
 
 ```
-ghcr.io/mpyw/php-eol-cve-2026-109618-109619:<tag>
+ghcr.io/digitalspacestdio/php-legacy:<tag>
+```
+
+```sh
+docker pull ghcr.io/digitalspacestdio/php-legacy:7.4-fpm
 ```
 
 Platforms: `linux/amd64`, `linux/arm64`.
@@ -57,7 +64,7 @@ The default Debian for each version:
 | 8.1 | trixie |
 
 Each release also gets an immutable tag, such as `7.4.33-cli-bullseye-v1.0.0`.
-The [releases](https://github.com/mpyw/php-eol-CVE-2026-109618-109619/releases) list these tags with their digests.
+The [releases](https://github.com/digitalspacestdio/php-legacy/releases) list these tags with their digests.
 
 > [!NOTE]
 > 7.0 to 8.0 stay on the OS versions that docker-library used last.
@@ -144,7 +151,7 @@ Each port was checked against a build of the unpatched tarball, using these php-
 The Dockerfiles read the patches from a named build context.
 
 ```sh
-docker buildx build --build-context patches=./patches -t php-eol:7.4-cli 7.4/bullseye/cli
+docker buildx build --build-context patches=./patches -t php-legacy:7.4-cli 7.4/bullseye/cli
 ```
 
 ## License
