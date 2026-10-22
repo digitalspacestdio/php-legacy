@@ -32,6 +32,9 @@ ghcr.io/digitalspacestdio/php-legacy:<tag>
 docker pull ghcr.io/digitalspacestdio/php-legacy:7.4-fpm
 ```
 
+Every push to `main` that passes CI updates the moving tags below.
+A release adds an immutable tag per variant, such as `7.4.33-cli-bullseye-v1.0.0`.
+
 Platforms: `linux/amd64`, `linux/arm64`.
 
 | PHP | Debian | Alpine | Variants |
@@ -54,6 +57,7 @@ Tags follow the official image naming.
 | `7.4-fpm-bullseye` | that variant on that OS |
 | `7.4-alpine`, `7.4-fpm-alpine` | cli or fpm on Alpine |
 | `8.1-cli-bookworm` | 8.1 on the non-default Debian |
+| `latest` | 8.1 cli on trixie |
 
 The default Debian for each version:
 
@@ -66,6 +70,7 @@ The default Debian for each version:
 
 Each release also gets an immutable tag, such as `7.4.33-cli-bullseye-v1.0.0`.
 The [releases](https://github.com/digitalspacestdio/php-legacy/releases) list these tags with their digests.
+To make a release, run the `Tag and Release` workflow with a version such as `v1.0.0`.
 
 > [!NOTE]
 > 5.6 to 8.0 stay on the OS versions that docker-library used last.

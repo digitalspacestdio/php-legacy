@@ -3,6 +3,9 @@
 # Usage: .github/tags.sh 7.4/bullseye/cli
 set -euo pipefail
 
+# "latest" points at the cli image of this version on its default Debian.
+latest_version=8.1
+
 dir="$1"
 IFS=/ read -r ver os variant <<< "$dir"
 full="$(sed -n 's/^ENV PHP_VERSION //p' "$dir/Dockerfile")"
@@ -30,6 +33,9 @@ for v in "$full" "$ver"; do
 			if [ "$variant" = cli ]; then
 				echo "$v-$os"
 				echo "$v"
+				if [ "$v" = "$latest_version" ]; then
+					echo latest
+				fi
 			fi
 			;;
 		*)
